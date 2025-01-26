@@ -104,6 +104,18 @@ _WRITABLE_FIELDS = (
     "retention",
     "storageClass",
 )
+_EDITABLE_METADATA_FIELDS = (
+    "cacheControl",
+    "contentDisposition",
+    "contentEncoding",
+    "contentLanguage",
+    _CONTENT_TYPE_FIELD,
+    "customTime",
+    "metadata",
+    "eventBasedHold",
+    "temporaryHold",
+    "retention",
+)
 _READ_LESS_THAN_SIZE = (
     "Size {:d} was specified but the file-like object only had " "{:d} bytes remaining."
 )

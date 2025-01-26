@@ -18,51 +18,50 @@ import base64
 import copy
 import datetime
 import json
-from urllib.parse import urlsplit
 import warnings
+from urllib.parse import urlsplit
 
 from google.api_core import datetime_helpers
-from google.cloud._helpers import _datetime_to_rfc3339
-from google.cloud._helpers import _rfc3339_nanos_to_datetime
-from google.cloud.exceptions import NotFound
 from google.api_core.iam import Policy
+from google.cloud._helpers import _datetime_to_rfc3339, _rfc3339_nanos_to_datetime
+from google.cloud.exceptions import NotFound
 from google.cloud.storage import _signing
-from google.cloud.storage._helpers import _add_etag_match_headers
-from google.cloud.storage._helpers import _add_generation_match_parameters
-from google.cloud.storage._helpers import _NOW
-from google.cloud.storage._helpers import _PropertyMixin
-from google.cloud.storage._helpers import _UTC
-from google.cloud.storage._helpers import _scalar_property
-from google.cloud.storage._helpers import _validate_name
-from google.cloud.storage._signing import generate_signed_url_v2
-from google.cloud.storage._signing import generate_signed_url_v4
-from google.cloud.storage._helpers import _bucket_bound_hostname_url
-from google.cloud.storage._helpers import _virtual_hosted_style_base_url
-from google.cloud.storage._opentelemetry_tracing import create_trace_span
-from google.cloud.storage.acl import BucketACL
-from google.cloud.storage.acl import DefaultObjectACL
-from google.cloud.storage.blob import Blob
-from google.cloud.storage.constants import _DEFAULT_TIMEOUT
-from google.cloud.storage.constants import ARCHIVE_STORAGE_CLASS
-from google.cloud.storage.constants import COLDLINE_STORAGE_CLASS
-from google.cloud.storage.constants import DUAL_REGION_LOCATION_TYPE
-from google.cloud.storage.constants import (
-    DURABLE_REDUCED_AVAILABILITY_LEGACY_STORAGE_CLASS,
+from google.cloud.storage._helpers import (
+    _NOW,
+    _UTC,
+    _add_etag_match_headers,
+    _add_generation_match_parameters,
+    _bucket_bound_hostname_url,
+    _PropertyMixin,
+    _scalar_property,
+    _validate_name,
+    _virtual_hosted_style_base_url,
 )
-from google.cloud.storage.constants import MULTI_REGIONAL_LEGACY_STORAGE_CLASS
-from google.cloud.storage.constants import MULTI_REGION_LOCATION_TYPE
-from google.cloud.storage.constants import NEARLINE_STORAGE_CLASS
-from google.cloud.storage.constants import PUBLIC_ACCESS_PREVENTION_INHERITED
-from google.cloud.storage.constants import REGIONAL_LEGACY_STORAGE_CLASS
-from google.cloud.storage.constants import REGION_LOCATION_TYPE
-from google.cloud.storage.constants import STANDARD_STORAGE_CLASS
-from google.cloud.storage.notification import BucketNotification
-from google.cloud.storage.notification import NONE_PAYLOAD_FORMAT
-from google.cloud.storage.retry import DEFAULT_RETRY
-from google.cloud.storage.retry import DEFAULT_RETRY_IF_GENERATION_SPECIFIED
-from google.cloud.storage.retry import DEFAULT_RETRY_IF_ETAG_IN_JSON
-from google.cloud.storage.retry import DEFAULT_RETRY_IF_METAGENERATION_SPECIFIED
-
+from google.cloud.storage._opentelemetry_tracing import create_trace_span
+from google.cloud.storage._signing import generate_signed_url_v2, generate_signed_url_v4
+from google.cloud.storage.acl import BucketACL, DefaultObjectACL
+from google.cloud.storage.blob import _EDITABLE_METADATA_FIELDS, Blob
+from google.cloud.storage.constants import (
+    _DEFAULT_TIMEOUT,
+    ARCHIVE_STORAGE_CLASS,
+    COLDLINE_STORAGE_CLASS,
+    DUAL_REGION_LOCATION_TYPE,
+    DURABLE_REDUCED_AVAILABILITY_LEGACY_STORAGE_CLASS,
+    MULTI_REGION_LOCATION_TYPE,
+    MULTI_REGIONAL_LEGACY_STORAGE_CLASS,
+    NEARLINE_STORAGE_CLASS,
+    PUBLIC_ACCESS_PREVENTION_INHERITED,
+    REGION_LOCATION_TYPE,
+    REGIONAL_LEGACY_STORAGE_CLASS,
+    STANDARD_STORAGE_CLASS,
+)
+from google.cloud.storage.notification import NONE_PAYLOAD_FORMAT, BucketNotification
+from google.cloud.storage.retry import (
+    DEFAULT_RETRY,
+    DEFAULT_RETRY_IF_ETAG_IN_JSON,
+    DEFAULT_RETRY_IF_GENERATION_SPECIFIED,
+    DEFAULT_RETRY_IF_METAGENERATION_SPECIFIED,
+)
 
 _UBLA_BPO_ENABLED_MESSAGE = (
     "Pass only one of 'uniform_bucket_level_access_enabled' / "
@@ -1955,6 +1954,7 @@ class Bucket(_PropertyMixin):
         if_source_metageneration_not_match=None,
         timeout=_DEFAULT_TIMEOUT,
         retry=DEFAULT_RETRY_IF_GENERATION_SPECIFIED,
+        new_object_properties=None,
     ):
         """Copy the given blob to the given bucket, optionally with a new name.
 
@@ -2048,6 +2048,12 @@ class Bucket(_PropertyMixin):
             to enable retries regardless of generation precondition setting.
             See [Configuring Retries](https://cloud.google.com/python/docs/reference/storage/latest/retry_timeout).
 
+        :type new_object_properties: dict
+        :param new_object_properties:
+            (Optional) Dictionary of new object properties to be set on the target blob. Only editable metadata
+            is allowed here.
+            For specifics see [Editable Metadata](https://cloud.google.com/storage/docs/metadata#editable).
+
         :rtype: :class:`google.cloud.storage.blob.Blob`
         :returns: The new Blob.
         """
@@ -2075,11 +2081,25 @@ class Bucket(_PropertyMixin):
         if new_name is None:
             new_name = blob.name
 
+        if new_object_properties is not None:
+            new_object_properties = {
+                **{
+                    k: v
+                    for k, v in blob._properties.items()
+                    if k in _EDITABLE_METADATA_FIELDS
+                },
+                **{
+                    k: v
+                    for k, v in new_object_properties.items()
+                    if k in _EDITABLE_METADATA_FIELDS
+                },
+            }
+
         new_blob = Blob(bucket=destination_bucket, name=new_name)
         api_path = blob.path + "/copyTo" + new_blob.path
         copy_result = client._post_resource(
             api_path,
-            None,
+            new_object_properties,
             query_params=query_params,
             timeout=timeout,
             retry=retry,
