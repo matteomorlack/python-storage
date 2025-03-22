@@ -2352,6 +2352,50 @@ class Test_Bucket(unittest.TestCase):
             _target_object=new_blob,
         )
 
+    def test_copy_blob_w_properties(self):
+        source_name = "source"
+        dest_name = "dest"
+        blob_name = "blob-name"
+        new_name = "new_name"
+        user_project = "user-project-123"
+        api_response = {}
+        client = mock.Mock(spec=["_post_resource"])
+        client._post_resource.return_value = api_response
+        source = self._make_one(
+            client=client, name=source_name, user_project=user_project
+        )
+        dest = self._make_one(client=client, name=dest_name)
+        blob = self._make_blob(source_name, blob_name)
+        blob_properties = {"contentType": "application/geo+json", "name": "not set"}
+        blob._properties = blob_properties
+
+        new_object_properties = {"metadata": {"key", "value"}, "name": "not set"}
+        new_blob = source.copy_blob(
+            blob, dest, new_name, new_object_properties=new_object_properties
+        )
+
+        self.assertIs(new_blob.bucket, dest)
+        self.assertEqual(new_blob.name, new_name)
+
+        expected_path = "/b/{}/o/{}/copyTo/b/{}/o/{}".format(
+            source_name, blob_name, dest_name, new_name
+        )
+        excluded_properties = ["name"]
+        expected_data = {
+            k: v
+            for k, v in {**blob_properties, **new_object_properties}.items()
+            if k not in excluded_properties
+        }
+        expected_query_params = {"userProject": user_project}
+        client._post_resource.assert_called_once_with(
+            expected_path,
+            expected_data,
+            query_params=expected_query_params,
+            timeout=self._get_default_timeout(),
+            retry=DEFAULT_RETRY_IF_GENERATION_SPECIFIED,
+            _target_object=new_blob,
+        )
+
     def _rename_blob_helper(self, explicit_client=False, same_name=False, **kw):
         bucket_name = "BUCKET_NAME"
         blob_name = "blob-name"

@@ -41,7 +41,7 @@ from google.cloud.storage._helpers import _virtual_hosted_style_base_url
 from google.cloud.storage._opentelemetry_tracing import create_trace_span
 from google.cloud.storage.acl import BucketACL
 from google.cloud.storage.acl import DefaultObjectACL
-from google.cloud.storage.blob import Blob
+from google.cloud.storage.blob import _EDITABLE_METADATA_FIELDS, Blob
 from google.cloud.storage.constants import _DEFAULT_TIMEOUT
 from google.cloud.storage.constants import ARCHIVE_STORAGE_CLASS
 from google.cloud.storage.constants import COLDLINE_STORAGE_CLASS
@@ -1957,6 +1957,7 @@ class Bucket(_PropertyMixin):
         if_source_metageneration_not_match=None,
         timeout=_DEFAULT_TIMEOUT,
         retry=DEFAULT_RETRY_IF_GENERATION_SPECIFIED,
+        new_object_properties=None,
     ):
         """Copy the given blob to the given bucket, optionally with a new name.
 
@@ -2052,6 +2053,15 @@ class Bucket(_PropertyMixin):
 
         :rtype: :class:`google.cloud.storage.blob.Blob`
         :returns: The new Blob.
+
+        :type new_object_properties: dict
+        :param new_object_properties:
+            (Optional) Dictionary of new object properties to be set on the target blob. Only editable metadata
+            is allowed here.
+            For specifics see [Editable Metadata](https://cloud.google.com/storage/docs/metadata#editable).
+
+        :rtype: :class:`google.cloud.storage.blob.Blob`
+        :returns: The new Blob.
         """
         with create_trace_span(name="Storage.Bucket.copyBlob"):
             client = self._require_client(client)
@@ -2078,11 +2088,25 @@ class Bucket(_PropertyMixin):
             if new_name is None:
                 new_name = blob.name
 
+        if new_object_properties is not None:
+            new_object_properties = {
+                **{
+                    k: v
+                    for k, v in blob._properties.items()
+                    if k in _EDITABLE_METADATA_FIELDS
+                },
+                **{
+                    k: v
+                    for k, v in new_object_properties.items()
+                    if k in _EDITABLE_METADATA_FIELDS
+                },
+            }
+
             new_blob = Blob(bucket=destination_bucket, name=new_name)
             api_path = blob.path + "/copyTo" + new_blob.path
             copy_result = client._post_resource(
                 api_path,
-                None,
+                new_object_properties,
                 query_params=query_params,
                 timeout=timeout,
                 retry=retry,
